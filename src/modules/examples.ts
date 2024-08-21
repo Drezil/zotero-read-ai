@@ -8,7 +8,7 @@ function example(
   descriptor: PropertyDescriptor,
 ) {
   const original = descriptor.value;
-  descriptor.value = function (...args: any) {
+  descriptor.value = function(...args: any) {
     try {
       ztoolkit.log(`Calling example ${target.name}.${String(propertyKey)}`);
       return original.apply(this, args);
@@ -57,7 +57,7 @@ export class CollectionUpdateFactory {
           }
         }
       }
-      const handleDownloadError = function (att: Zotero.Item) {
+      const handleDownloadError = function(att: Zotero.Item) {
         if (att.hasTag("LLM:download-error")) {
           att.addTag("LLM:ignore", 0);
           att.removeTag("LLM:download-error");
@@ -69,7 +69,6 @@ export class CollectionUpdateFactory {
 
       if (
         summaryNote === null &&
-        !item.hasTag("LLM:Summary") &&
         !item.hasTag("LLM:no-summary") &&
         !item.isAttachment() &&
         item.itemType !== "book"
@@ -192,7 +191,6 @@ export class CollectionUpdateFactory {
               note.addTag("LLM:Summary");
               note.libraryID = item.libraryID;
               await note.saveTx();
-              item.addTag("LLM:Summary");
               item.removeTag("LLM:Summary-requested");
               await item.saveTx();
               ztoolkit.log("SUMMARY ADDED");
@@ -691,7 +689,7 @@ export class PromptExampleFactory {
                 listeners: [
                   {
                     type: "mousemove",
-                    listener: function () {
+                    listener: function() {
                       // @ts-ignore ignore
                       prompt.selectItem(this);
                     },
