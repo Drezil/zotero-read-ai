@@ -1,6 +1,6 @@
 {
   "name": "zotero-read-ai",
-  "version": "0.1-pre1",
+  "version": "0.0.1-pre.0",
   "description": "Zotero ReadAi",
   "config": {
     "addonName": "Zotero Read Ai",
@@ -12,6 +12,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Drezil/zotero-read-ai.git"
+  },
+  "npm": {
+    "publish": false
   },
   "author": "Drezil",
   "bugs": {
