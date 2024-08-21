@@ -1,3 +1,4 @@
+import { ProgressWindowHelper } from "zotero-plugin-toolkit/dist/helpers/progressWindow";
 import { config } from "../../package.json";
 import { getLocaleID, getString } from "../utils/locale";
 
@@ -17,6 +18,204 @@ function example(
     }
   };
   return descriptor;
+}
+
+interface ServerAnswer {
+  summary: string;
+}
+
+export class CollectionUpdateFactory {
+  @example
+  static async updateCollection(popupWin: ProgressWindowHelper) {
+    const s = new Zotero.Search();
+    const zp = Zotero.getActiveZoteroPane();
+    s.addCondition("libraryID", "is", zp.getSelectedLibraryID().toString());
+    // s.addCondition('collection', 'is', selectedCollection.key);
+    s.addCondition("recursive", "true"); // equivalent of "Search subfolders" checked
+    s.addCondition("noChildren", "true");
+    const itemIDs = await s.search();
+    // const selectedCollection = ZoteroPane.getSelectedCollection();
+    // let itemIDs = selectedCollection.getChildItems(true);
+    let itemNumber = 0;
+    for (const itemID of itemIDs) {
+      itemNumber += 1;
+      ztoolkit.log(itemID);
+      const p = Math.floor((itemNumber * 100) / itemIDs.length);
+      popupWin.changeLine({
+        progress: p,
+        text: `[${p}%] ${getString("items-checked")}`,
+      });
+      const item = await Zotero.Items.getAsync(itemID);
+      const noteIDs = item.getNotes();
+      let summaryNote = null;
+      if (noteIDs.length > 0) {
+        for (const noteID of noteIDs) {
+          const note = Zotero.Items.get(noteID);
+          if (note.hasTag("LLM:Summary")) {
+            summaryNote = noteID;
+            break;
+          }
+        }
+      }
+      const handleDownloadError = function (att: Zotero.Item) {
+        if (att.hasTag("LLM:download-error")) {
+          att.addTag("LLM:ignore", 0);
+          att.removeTag("LLM:download-error");
+        } else {
+          att.addTag("LLM:download-error", 0);
+        }
+        return false;
+      };
+
+      if (
+        summaryNote === null &&
+        !item.hasTag("LLM:Summary") &&
+        !item.hasTag("LLM:no-summary") &&
+        !item.isAttachment() &&
+        item.itemType !== "book"
+      ) {
+        const attIDs = item.getAttachments();
+        let pdfpath = null;
+        for (const attID of attIDs) {
+          const att = Zotero.Items.get(attID);
+          if (att.attachmentContentType === "application/pdf") {
+            const thepath = await att.getFilePathAsync();
+            if (thepath) {
+              pdfpath = thepath;
+            } else {
+              if (att.getFilePath()) {
+                try {
+                  await Zotero.Attachments.downloadFirstAvailableFile(
+                    [att.getField("url")],
+                    att.getFilePath().toString(),
+                    {
+                      onBeforeRequest: () => {
+                        return;
+                      },
+                      onAfterRequest: () => {
+                        return;
+                      },
+                      onRequestError: () => handleDownloadError(att),
+                    },
+                  );
+                } catch (e) {
+                  ztoolkit.log(
+                    new Error(
+                      `Could not download ${att.getField("url")}: ${e}`,
+                    ),
+                  );
+                  ztoolkit.log(new Error(JSON.stringify(att)));
+                }
+              } else {
+                const tmpDirectory = (
+                  await Zotero.Attachments.createTemporaryStorageDirectory()
+                ).path;
+                const tmpFile = PathUtils.join(`${tmpDirectory}`, "file.tmp");
+
+                try {
+                  await Zotero.Attachments.downloadFirstAvailableFile(
+                    [att.getField("url")],
+                    tmpFile,
+                    {
+                      onBeforeRequest: () => {
+                        return;
+                      },
+                      onAfterRequest: () => {
+                        return;
+                      },
+                      onRequestError: () => handleDownloadError(att),
+                    },
+                  );
+                  // if download succeded remove error-tag
+                  if (att.hasTag("LLM:download-error")) {
+                    att.removeTag("LLM:download-error");
+                  }
+                  const fileBaseName =
+                    Zotero.Attachments.getFileBaseNameFromItem(
+                      item,
+                      att.getDisplayTitle(),
+                    );
+                  const filename = await Zotero.File.rename(
+                    tmpFile,
+                    `${fileBaseName}.pdf`,
+                  );
+                  att.attachmentLinkMode =
+                    Zotero.Attachments.LINK_MODE_IMPORTED_URL;
+                  att.attachmentPath = `storage:${filename}`;
+                  await att.saveTx();
+                  // Move file to final location
+                  const destDir =
+                    Zotero.Attachments.getStorageDirectory(att).path;
+                  await OS.File.move(tmpDirectory, destDir);
+                  ztoolkit.log(
+                    new Error(
+                      JSON.stringify([
+                        tmpDirectory,
+                        tmpFile,
+                        fileBaseName,
+                        filename,
+                        destDir,
+                        att,
+                      ]),
+                    ),
+                  );
+                  item.setField(
+                    "url",
+                    item.getField("url") || att.getField("url"),
+                  );
+                } catch (e) {
+                  ztoolkit.log(
+                    new Error(
+                      `Could not download ${att.getField("url")}: ${e}`,
+                    ),
+                  );
+                  ztoolkit.log(new Error(JSON.stringify(att)));
+                }
+              }
+            }
+          }
+        }
+
+        if (pdfpath !== null) {
+          ztoolkit.log(`pdf found: ${pdfpath}`);
+          const response = await fetch("http://localhost:3246", {
+            method: "POST",
+            body: JSON.stringify({ path: pdfpath }),
+          });
+          try {
+            const data: ServerAnswer =
+              (await response.json()) as unknown as ServerAnswer;
+            if (data.summary) {
+              const note = new Zotero.Item("note");
+              note.parentKey = item.key;
+              note.setNote(data.summary);
+              note.addTag("LLM:Summary");
+              note.libraryID = item.libraryID;
+              await note.saveTx();
+              item.addTag("LLM:Summary");
+              item.removeTag("LLM:Summary-requested");
+              await item.saveTx();
+              ztoolkit.log("SUMMARY ADDED");
+            } else {
+              item.addTag("LLM:Summary-requested");
+              await item.saveTx();
+              ztoolkit.log(JSON.stringify(data));
+            }
+          } catch (e) {
+            ztoolkit.log(e);
+          }
+        } else {
+          item.removeTag("LLM:Summary-requested");
+          await item.saveTx();
+        }
+      }
+    }
+    popupWin.changeLine({
+      progress: 100,
+      text: `[100%] ${getString("items-checked")}`,
+    });
+    popupWin.startCloseTimer(5000);
+  }
 }
 
 export class BasicExampleFactory {
@@ -146,61 +345,21 @@ export class UIExampleFactory {
   static registerRightClickMenuItem() {
     const menuIcon = `chrome://${config.addonRef}/content/icons/favicon@0.5x.png`;
     // item menuitem with icon
-    ztoolkit.Menu.register("item", {
+    ztoolkit.Menu.register("collection", {
       tag: "menuitem",
-      id: "zotero-itemmenu-addontemplate-test",
+      id: "zotero-collectionmenu-readai-check",
       label: getString("menuitem-label"),
-      commandListener: (ev) => addon.hooks.onDialogEvents("dialogExample"),
+      commandListener: (ev) => addon.hooks.onUpdate(),
       icon: menuIcon,
     });
   }
 
   @example
-  static registerRightClickMenuPopup() {
-    ztoolkit.Menu.register(
-      "item",
-      {
-        tag: "menu",
-        label: getString("menupopup-label"),
-        children: [
-          {
-            tag: "menuitem",
-            label: getString("menuitem-submenulabel"),
-            oncommand: "alert('Hello World! Sub Menuitem.')",
-          },
-        ],
-      },
-      "before",
-      document.querySelector(
-        "#zotero-itemmenu-addontemplate-test",
-      ) as XUL.MenuItem,
-    );
-  }
-
-  @example
-  static registerWindowMenuWithSeparator() {
-    ztoolkit.Menu.register("menuFile", {
-      tag: "menuseparator",
-    });
-    // menu->File menuitem
-    ztoolkit.Menu.register("menuFile", {
+  static registerWindowMenu() {
+    ztoolkit.Menu.register("menuTools", {
       tag: "menuitem",
-      label: getString("menuitem-filemenulabel"),
-      oncommand: "alert('Hello World! File Menuitem.')",
-    });
-  }
-
-  @example
-  static async registerExtraColumn() {
-    const field = "test1";
-    await Zotero.ItemTreeManager.registerColumns({
-      pluginID: config.addonID,
-      dataKey: field,
-      label: "text column",
-      dataProvider: (item: Zotero.Item, dataKey: string) => {
-        return field + String(item.id);
-      },
-      iconPath: "chrome://zotero/skin/cross.png",
+      label: getString("menuitem-toolmenulabel"),
+      oncommand: "alert('Hello World! Tool Menuitem.')",
     });
   }
 
@@ -456,7 +615,6 @@ export class PromptExampleFactory {
                 str += node;
               }
             }
-            str.length && (str += ".");
             return str;
           }
           function filter(ids: number[]) {
@@ -618,277 +776,277 @@ export class PromptExampleFactory {
   }
 }
 
-export class HelperExampleFactory {
-  @example
-  static async dialogExample() {
-    const dialogData: { [key: string | number]: any } = {
-      inputValue: "test",
-      checkboxValue: true,
-      loadCallback: () => {
-        ztoolkit.log(dialogData, "Dialog Opened!");
-      },
-      unloadCallback: () => {
-        ztoolkit.log(dialogData, "Dialog closed!");
-      },
-    };
-    const dialogHelper = new ztoolkit.Dialog(10, 2)
-      .addCell(0, 0, {
-        tag: "h1",
-        properties: { innerHTML: "Helper Examples" },
-      })
-      .addCell(1, 0, {
-        tag: "h2",
-        properties: { innerHTML: "Dialog Data Binding" },
-      })
-      .addCell(2, 0, {
-        tag: "p",
-        properties: {
-          innerHTML:
-            "Elements with attribute 'data-bind' are binded to the prop under 'dialogData' with the same name.",
-        },
-        styles: {
-          width: "200px",
-        },
-      })
-      .addCell(3, 0, {
-        tag: "label",
-        namespace: "html",
-        attributes: {
-          for: "dialog-checkbox",
-        },
-        properties: { innerHTML: "bind:checkbox" },
-      })
-      .addCell(
-        3,
-        1,
-        {
-          tag: "input",
-          namespace: "html",
-          id: "dialog-checkbox",
-          attributes: {
-            "data-bind": "checkboxValue",
-            "data-prop": "checked",
-            type: "checkbox",
-          },
-          properties: { label: "Cell 1,0" },
-        },
-        false,
-      )
-      .addCell(4, 0, {
-        tag: "label",
-        namespace: "html",
-        attributes: {
-          for: "dialog-input",
-        },
-        properties: { innerHTML: "bind:input" },
-      })
-      .addCell(
-        4,
-        1,
-        {
-          tag: "input",
-          namespace: "html",
-          id: "dialog-input",
-          attributes: {
-            "data-bind": "inputValue",
-            "data-prop": "value",
-            type: "text",
-          },
-        },
-        false,
-      )
-      .addCell(5, 0, {
-        tag: "h2",
-        properties: { innerHTML: "Toolkit Helper Examples" },
-      })
-      .addCell(
-        6,
-        0,
-        {
-          tag: "button",
-          namespace: "html",
-          attributes: {
-            type: "button",
-          },
-          listeners: [
-            {
-              type: "click",
-              listener: (e: Event) => {
-                addon.hooks.onDialogEvents("clipboardExample");
-              },
-            },
-          ],
-          children: [
-            {
-              tag: "div",
-              styles: {
-                padding: "2.5px 15px",
-              },
-              properties: {
-                innerHTML: "example:clipboard",
-              },
-            },
-          ],
-        },
-        false,
-      )
-      .addCell(
-        7,
-        0,
-        {
-          tag: "button",
-          namespace: "html",
-          attributes: {
-            type: "button",
-          },
-          listeners: [
-            {
-              type: "click",
-              listener: (e: Event) => {
-                addon.hooks.onDialogEvents("filePickerExample");
-              },
-            },
-          ],
-          children: [
-            {
-              tag: "div",
-              styles: {
-                padding: "2.5px 15px",
-              },
-              properties: {
-                innerHTML: "example:filepicker",
-              },
-            },
-          ],
-        },
-        false,
-      )
-      .addCell(
-        8,
-        0,
-        {
-          tag: "button",
-          namespace: "html",
-          attributes: {
-            type: "button",
-          },
-          listeners: [
-            {
-              type: "click",
-              listener: (e: Event) => {
-                addon.hooks.onDialogEvents("progressWindowExample");
-              },
-            },
-          ],
-          children: [
-            {
-              tag: "div",
-              styles: {
-                padding: "2.5px 15px",
-              },
-              properties: {
-                innerHTML: "example:progressWindow",
-              },
-            },
-          ],
-        },
-        false,
-      )
-      .addCell(
-        9,
-        0,
-        {
-          tag: "button",
-          namespace: "html",
-          attributes: {
-            type: "button",
-          },
-          listeners: [
-            {
-              type: "click",
-              listener: (e: Event) => {
-                addon.hooks.onDialogEvents("vtableExample");
-              },
-            },
-          ],
-          children: [
-            {
-              tag: "div",
-              styles: {
-                padding: "2.5px 15px",
-              },
-              properties: {
-                innerHTML: "example:virtualized-table",
-              },
-            },
-          ],
-        },
-        false,
-      )
-      .addButton("Confirm", "confirm")
-      .addButton("Cancel", "cancel")
-      .addButton("Help", "help", {
-        noClose: true,
-        callback: (e) => {
-          dialogHelper.window?.alert(
-            "Help Clicked! Dialog will not be closed.",
-          );
-        },
-      })
-      .setDialogData(dialogData)
-      .open("Dialog Example");
-    addon.data.dialog = dialogHelper;
-    await dialogData.unloadLock.promise;
-    addon.data.dialog = undefined;
-    addon.data.alive &&
-      ztoolkit.getGlobal("alert")(
-        `Close dialog with ${dialogData._lastButtonId}.\nCheckbox: ${dialogData.checkboxValue}\nInput: ${dialogData.inputValue}.`,
-      );
-    ztoolkit.log(dialogData);
-  }
-
-  @example
-  static clipboardExample() {
-    new ztoolkit.Clipboard()
-      .addText(
-        "![Plugin Template](https://github.com/windingwind/zotero-plugin-template)",
-        "text/unicode",
-      )
-      .addText(
-        '<a href="https://github.com/windingwind/zotero-plugin-template">Plugin Template</a>',
-        "text/html",
-      )
-      .copy();
-    ztoolkit.getGlobal("alert")("Copied!");
-  }
-
-  @example
-  static async filePickerExample() {
-    const path = await new ztoolkit.FilePicker(
-      "Import File",
-      "open",
-      [
-        ["PNG File(*.png)", "*.png"],
-        ["Any", "*.*"],
-      ],
-      "image.png",
-    ).open();
-    ztoolkit.getGlobal("alert")(`Selected ${path}`);
-  }
-
-  @example
-  static progressWindowExample() {
-    new ztoolkit.ProgressWindow(config.addonName)
-      .createLine({
-        text: "ProgressWindow Example!",
-        type: "success",
-        progress: 100,
-      })
-      .show();
-  }
-
-  @example
-  static vtableExample() {
-    ztoolkit.getGlobal("alert")("See src/modules/preferenceScript.ts");
-  }
-}
+// export class HelperExampleFactory {
+//   @example
+//   static async dialogExample() {
+//     const dialogData: { [key: string | number]: any } = {
+//       inputValue: "test",
+//       checkboxValue: true,
+//       loadCallback: () => {
+//         ztoolkit.log(dialogData, "Dialog Opened!");
+//       },
+//       unloadCallback: () => {
+//         ztoolkit.log(dialogData, "Dialog closed!");
+//       },
+//     };
+//     const dialogHelper = new ztoolkit.Dialog(10, 2)
+//       .addCell(0, 0, {
+//         tag: "h1",
+//         properties: { innerHTML: "Helper Examples" },
+//       })
+//       .addCell(1, 0, {
+//         tag: "h2",
+//         properties: { innerHTML: "Dialog Data Binding" },
+//       })
+//       .addCell(2, 0, {
+//         tag: "p",
+//         properties: {
+//           innerHTML:
+//             "Elements with attribute 'data-bind' are binded to the prop under 'dialogData' with the same name.",
+//         },
+//         styles: {
+//           width: "200px",
+//         },
+//       })
+//       .addCell(3, 0, {
+//         tag: "label",
+//         namespace: "html",
+//         attributes: {
+//           for: "dialog-checkbox",
+//         },
+//         properties: { innerHTML: "bind:checkbox" },
+//       })
+//       .addCell(
+//         3,
+//         1,
+//         {
+//           tag: "input",
+//           namespace: "html",
+//           id: "dialog-checkbox",
+//           attributes: {
+//             "data-bind": "checkboxValue",
+//             "data-prop": "checked",
+//             type: "checkbox",
+//           },
+//           properties: { label: "Cell 1,0" },
+//         },
+//         false,
+//       )
+//       .addCell(4, 0, {
+//         tag: "label",
+//         namespace: "html",
+//         attributes: {
+//           for: "dialog-input",
+//         },
+//         properties: { innerHTML: "bind:input" },
+//       })
+//       .addCell(
+//         4,
+//         1,
+//         {
+//           tag: "input",
+//           namespace: "html",
+//           id: "dialog-input",
+//           attributes: {
+//             "data-bind": "inputValue",
+//             "data-prop": "value",
+//             type: "text",
+//           },
+//         },
+//         false,
+//       )
+//       .addCell(5, 0, {
+//         tag: "h2",
+//         properties: { innerHTML: "Toolkit Helper Examples" },
+//       })
+//       .addCell(
+//         6,
+//         0,
+//         {
+//           tag: "button",
+//           namespace: "html",
+//           attributes: {
+//             type: "button",
+//           },
+//           listeners: [
+//             {
+//               type: "click",
+//               listener: (e: Event) => {
+//                 addon.hooks.onDialogEvents("clipboardExample");
+//               },
+//             },
+//           ],
+//           children: [
+//             {
+//               tag: "div",
+//               styles: {
+//                 padding: "2.5px 15px",
+//               },
+//               properties: {
+//                 innerHTML: "example:clipboard",
+//               },
+//             },
+//           ],
+//         },
+//         false,
+//       )
+//       .addCell(
+//         7,
+//         0,
+//         {
+//           tag: "button",
+//           namespace: "html",
+//           attributes: {
+//             type: "button",
+//           },
+//           listeners: [
+//             {
+//               type: "click",
+//               listener: (e: Event) => {
+//                 addon.hooks.onDialogEvents("filePickerExample");
+//               },
+//             },
+//           ],
+//           children: [
+//             {
+//               tag: "div",
+//               styles: {
+//                 padding: "2.5px 15px",
+//               },
+//               properties: {
+//                 innerHTML: "example:filepicker",
+//               },
+//             },
+//           ],
+//         },
+//         false,
+//       )
+//       .addCell(
+//         8,
+//         0,
+//         {
+//           tag: "button",
+//           namespace: "html",
+//           attributes: {
+//             type: "button",
+//           },
+//           listeners: [
+//             {
+//               type: "click",
+//               listener: (e: Event) => {
+//                 addon.hooks.onDialogEvents("progressWindowExample");
+//               },
+//             },
+//           ],
+//           children: [
+//             {
+//               tag: "div",
+//               styles: {
+//                 padding: "2.5px 15px",
+//               },
+//               properties: {
+//                 innerHTML: "example:progressWindow",
+//               },
+//             },
+//           ],
+//         },
+//         false,
+//       )
+//       .addCell(
+//         9,
+//         0,
+//         {
+//           tag: "button",
+//           namespace: "html",
+//           attributes: {
+//             type: "button",
+//           },
+//           listeners: [
+//             {
+//               type: "click",
+//               listener: (e: Event) => {
+//                 addon.hooks.onDialogEvents("vtableExample");
+//               },
+//             },
+//           ],
+//           children: [
+//             {
+//               tag: "div",
+//               styles: {
+//                 padding: "2.5px 15px",
+//               },
+//               properties: {
+//                 innerHTML: "example:virtualized-table",
+//               },
+//             },
+//           ],
+//         },
+//         false,
+//       )
+//       .addButton("Confirm", "confirm")
+//       .addButton("Cancel", "cancel")
+//       .addButton("Help", "help", {
+//         noClose: true,
+//         callback: (e) => {
+//           dialogHelper.window?.alert(
+//             "Help Clicked! Dialog will not be closed.",
+//           );
+//         },
+//       })
+//       .setDialogData(dialogData)
+//       .open("Dialog Example");
+//     addon.data.dialog = dialogHelper;
+//     await dialogData.unloadLock.promise;
+//     addon.data.dialog = undefined;
+//     addon.data.alive &&
+//       ztoolkit.getGlobal("alert")(
+//         `Close dialog with ${dialogData._lastButtonId}.\nCheckbox: ${dialogData.checkboxValue}\nInput: ${dialogData.inputValue}.`,
+//       );
+//     ztoolkit.log(dialogData);
+//   }
+//
+//   @example
+//   static clipboardExample() {
+//     new ztoolkit.Clipboard()
+//       .addText(
+//         "![Plugin Template](https://github.com/windingwind/zotero-plugin-template)",
+//         "text/unicode",
+//       )
+//       .addText(
+//         '<a href="https://github.com/windingwind/zotero-plugin-template">Plugin Template</a>',
+//         "text/html",
+//       )
+//       .copy();
+//     ztoolkit.getGlobal("alert")("Copied!");
+//   }
+//
+//   @example
+//   static async filePickerExample() {
+//     const path = await new ztoolkit.FilePicker(
+//       "Import File",
+//       "open",
+//       [
+//         ["PNG File(*.png)", "*.png"],
+//         ["Any", "*.*"],
+//       ],
+//       "image.png",
+//     ).open();
+//     ztoolkit.getGlobal("alert")(`Selected ${path}`);
+//   }
+//
+//   @example
+//   static progressWindowExample() {
+//     new ztoolkit.ProgressWindow(config.addonName)
+//       .createLine({
+//         text: "ProgressWindow Example!",
+//         type: "success",
+//         progress: 100,
+//       })
+//       .show();
+//   }
+//
+//   @example
+//   static vtableExample() {
+//     ztoolkit.getGlobal("alert")("See src/modules/preferenceScript.ts");
+//   }
+// }

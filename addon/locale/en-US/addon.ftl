@@ -1,9 +1,10 @@
-startup-begin = Addon is loading
-startup-finish = Addon is ready
-menuitem-label = Addon Template: Helper Examples
-menupopup-label = Addon Template: Menupopup
-menuitem-submenulabel = Addon Template
-menuitem-filemenulabel = Addon Template: File Menuitem
+startup-begin = ReadAi is loading
+startup-finish = ReadAi is ready
+items-checked = Cheking...
+menuitem-label = ReadAi: Update Summaries
+menupopup-label = ReadAi Template: Menupopup
+menuitem-submenulabel = ReadAi Template
+menuitem-toolmenulabel = ReadAi: Update Summaries
 prefs-title = Template
 prefs-table-title = Title
 prefs-table-detail = Detail

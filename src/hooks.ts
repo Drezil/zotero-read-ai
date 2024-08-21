@@ -1,9 +1,9 @@
 import {
   BasicExampleFactory,
-  HelperExampleFactory,
   KeyExampleFactory,
   PromptExampleFactory,
   UIExampleFactory,
+  CollectionUpdateFactory,
 } from "./modules/examples";
 import { config } from "../package.json";
 import { getString, initLocale } from "./utils/locale";
@@ -24,8 +24,6 @@ async function onStartup() {
   BasicExampleFactory.registerNotifier();
 
   KeyExampleFactory.registerShortcuts();
-
-  await UIExampleFactory.registerExtraColumn();
 
   await UIExampleFactory.registerExtraColumnWithCustomCell();
 
@@ -64,9 +62,7 @@ async function onMainWindowLoad(win: Window): Promise<void> {
 
   UIExampleFactory.registerRightClickMenuItem();
 
-  UIExampleFactory.registerRightClickMenuPopup();
-
-  UIExampleFactory.registerWindowMenuWithSeparator();
+  UIExampleFactory.registerWindowMenu();
 
   await UIExampleFactory.registerCustomItemBoxRow();
 
@@ -84,7 +80,7 @@ async function onMainWindowLoad(win: Window): Promise<void> {
   });
   popupWin.startCloseTimer(5000);
 
-  addon.hooks.onDialogEvents("dialogExample");
+  // addon.hooks.onDialogEvents("dialogExample");
 }
 
 async function onMainWindowUnload(win: Window): Promise<void> {
@@ -152,26 +148,40 @@ function onShortcuts(type: string) {
   }
 }
 
-function onDialogEvents(type: string) {
-  switch (type) {
-    case "dialogExample":
-      HelperExampleFactory.dialogExample();
-      break;
-    case "clipboardExample":
-      HelperExampleFactory.clipboardExample();
-      break;
-    case "filePickerExample":
-      HelperExampleFactory.filePickerExample();
-      break;
-    case "progressWindowExample":
-      HelperExampleFactory.progressWindowExample();
-      break;
-    case "vtableExample":
-      HelperExampleFactory.vtableExample();
-      break;
-    default:
-      break;
-  }
+// function onDialogEvents(type: string) {
+//   switch (type) {
+//     case "dialogExample":
+//       HelperExampleFactory.dialogExample();
+//       break;
+//     case "clipboardExample":
+//       HelperExampleFactory.clipboardExample();
+//       break;
+//     case "filePickerExample":
+//       HelperExampleFactory.filePickerExample();
+//       break;
+//     case "progressWindowExample":
+//       HelperExampleFactory.progressWindowExample();
+//       break;
+//     case "vtableExample":
+//       HelperExampleFactory.vtableExample();
+//       break;
+//     default:
+//       break;
+//   }
+// }
+
+async function onUpdate() {
+  const popupWin = new ztoolkit.ProgressWindow(config.addonName, {
+    closeOnClick: true,
+    closeTime: -1,
+  })
+    .createLine({
+      text: getString("startup-begin"),
+      type: "default",
+      progress: 0,
+    })
+    .show();
+  CollectionUpdateFactory.updateCollection(popupWin);
 }
 
 // Add your hooks here. For element click, etc.
@@ -186,5 +196,6 @@ export default {
   onNotify,
   onPrefsEvent,
   onShortcuts,
-  onDialogEvents,
+  // onDialogEvents,
+  onUpdate,
 };
