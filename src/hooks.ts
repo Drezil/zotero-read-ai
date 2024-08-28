@@ -1,6 +1,5 @@
 import {
   BasicExampleFactory,
-  KeyExampleFactory,
   PromptExampleFactory,
   UIExampleFactory,
   CollectionUpdateFactory,
@@ -23,7 +22,7 @@ async function onStartup() {
 
   BasicExampleFactory.registerNotifier();
 
-  KeyExampleFactory.registerShortcuts();
+  // KeyExampleFactory.registerShortcuts();
 
   await UIExampleFactory.registerExtraColumnWithCustomCell();
 
@@ -135,18 +134,18 @@ async function onPrefsEvent(type: string, data: { [key: string]: any }) {
   }
 }
 
-function onShortcuts(type: string) {
-  switch (type) {
-    case "larger":
-      KeyExampleFactory.exampleShortcutLargerCallback();
-      break;
-    case "smaller":
-      KeyExampleFactory.exampleShortcutSmallerCallback();
-      break;
-    default:
-      break;
-  }
-}
+// function onShortcuts(type: string) {
+//   switch (type) {
+//     case "larger":
+//       KeyExampleFactory.exampleShortcutLargerCallback();
+//       break;
+//     case "smaller":
+//       KeyExampleFactory.exampleShortcutSmallerCallback();
+//       break;
+//     default:
+//       break;
+//   }
+// }
 
 // function onDialogEvents(type: string) {
 //   switch (type) {
@@ -195,7 +194,7 @@ export default {
   onMainWindowUnload,
   onNotify,
   onPrefsEvent,
-  onShortcuts,
+  // onShortcuts,
   // onDialogEvents,
   onUpdate,
 };

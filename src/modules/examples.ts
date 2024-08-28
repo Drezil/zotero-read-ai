@@ -21,7 +21,20 @@ function example(
 }
 
 interface ServerAnswer {
-  summary: string;
+  summary: string | undefined;
+  error: string | undefined;
+}
+
+async function hasPDFAttachment(item: Zotero.Item) {
+  let hasAtt = false;
+  for (const attID of item.getAttachments()) {
+    const att = await Zotero.Items.getAsync(attID);
+    if (att.isPDFAttachment()) {
+      hasAtt = true;
+      break;
+    }
+  }
+  return hasAtt
 }
 
 export class CollectionUpdateFactory {
@@ -64,9 +77,22 @@ export class CollectionUpdateFactory {
         } else {
           att.addTag("LLM:download-error", 0);
         }
-        return false;
+        return true;
       };
 
+      const hasAtt = await hasPDFAttachment(item)
+      Zotero.log("Has Att? " + hasAtt)
+      if (!hasAtt && item.getField('url') !== "") {
+
+        // @ts-ignore created in newer api
+        const foo = Zotero.Attachments.getFileResolvers(item)
+        Zotero.log(JSON.stringify(foo))
+        // @ts-ignore created in newer api
+        await Zotero.Attachments.addFileFromURLs(item, Zotero.Attachments.getFileResolvers(item, ['doi', 'url', 'oa', 'custom']), { shouldDisplayCaptcha: true, enforceFileType: true })
+        Zotero.log("should™ have added.. ")
+      }
+
+      let selectedAtt = null;
       if (
         summaryNote === null &&
         !item.hasTag("LLM:no-summary") &&
@@ -74,57 +100,41 @@ export class CollectionUpdateFactory {
         item.itemType !== "book"
       ) {
         const attIDs = item.getAttachments();
-        let pdfpath = null;
+        let pdfpath: string | null = null;
         for (const attID of attIDs) {
-          const att = Zotero.Items.get(attID);
-          if (att.attachmentContentType === "application/pdf") {
+          const att = await Zotero.Items.getAsync(attID);
+          if (att.attachmentContentType === "application/pdf"
+            && !att.hasTag("LLM:no-summary")
+            && !att.hasTag("LLM:ignore")) {
             const thepath = await att.getFilePathAsync();
             if (thepath) {
               pdfpath = thepath;
+              selectedAtt = att;
             } else {
-              if (att.getFilePath()) {
-                try {
-                  await Zotero.Attachments.downloadFirstAvailableFile(
-                    [att.getField("url")],
-                    att.getFilePath().toString(),
-                    {
-                      onBeforeRequest: () => {
-                        return;
-                      },
-                      onAfterRequest: () => {
-                        return;
-                      },
-                      onRequestError: () => handleDownloadError(att),
-                    },
-                  );
-                } catch (e) {
-                  ztoolkit.log(
-                    new Error(
-                      `Could not download ${att.getField("url")}: ${e}`,
-                    ),
-                  );
-                  ztoolkit.log(new Error(JSON.stringify(att)));
-                }
-              } else {
-                const tmpDirectory = (
-                  await Zotero.Attachments.createTemporaryStorageDirectory()
-                ).path;
-                const tmpFile = PathUtils.join(`${tmpDirectory}`, "file.tmp");
+              const tmpDirectory = (
+                await Zotero.Attachments.createTemporaryStorageDirectory()
+              ).path;
+              const tmpFile = PathUtils.join(`${tmpDirectory}`, "file.tmp");
 
-                try {
-                  await Zotero.Attachments.downloadFirstAvailableFile(
-                    [att.getField("url")],
-                    tmpFile,
-                    {
-                      onBeforeRequest: () => {
-                        return;
-                      },
-                      onAfterRequest: () => {
-                        return;
-                      },
-                      onRequestError: () => handleDownloadError(att),
+              try {
+                const success = await Zotero.Attachments.downloadFirstAvailableFile(
+                  Zotero.Attachments.getPDFResolvers(att), // FIXME: getFileResolvers in future versions, zotero-types not up to date.
+                  tmpFile,
+                  {
+                    onBeforeRequest: () => {
+                      return;
                     },
-                  );
+                    onAfterRequest: () => {
+                      return;
+                    },
+                    onRequestError: () => { return true },
+                  },
+                );
+                let mime = ""
+                if (success) {
+                  mime = Zotero.MIME.getMIMETypeFromFile(tmpFile)
+                }
+                if (mime === "application/pdf") {
                   // if download succeded remove error-tag
                   if (att.hasTag("LLM:download-error")) {
                     att.removeTag("LLM:download-error");
@@ -134,10 +144,11 @@ export class CollectionUpdateFactory {
                       item,
                       att.getDisplayTitle(),
                     );
-                  const filename = await Zotero.File.rename(
+                  let filename = await Zotero.File.rename(
                     tmpFile,
-                    `${fileBaseName}.pdf`,
+                    `${att.key}_${fileBaseName}.pdf`,
                   );
+                  filename = filename || `${att.key}_${fileBaseName}.pdf`
                   att.attachmentLinkMode =
                     Zotero.Attachments.LINK_MODE_IMPORTED_URL;
                   att.attachmentPath = `storage:${filename}`;
@@ -162,20 +173,30 @@ export class CollectionUpdateFactory {
                     "url",
                     item.getField("url") || att.getField("url"),
                   );
-                } catch (e) {
-                  ztoolkit.log(
-                    new Error(
-                      `Could not download ${att.getField("url")}: ${e}`,
-                    ),
-                  );
-                  ztoolkit.log(new Error(JSON.stringify(att)));
+                  pdfpath = PathUtils.join(destDir, filename)
+                  selectedAtt = att;
                 }
+                else {
+                  handleDownloadError(att)
+                }
+              } catch (e) {
+                ztoolkit.log(
+                  new Error(
+                    `Could not download ${att.getField("url")}: ${e}`,
+                  ),
+                );
+                ztoolkit.log(new Error(JSON.stringify(att)));
               }
             }
           }
         }
 
         if (pdfpath !== null) {
+          // maybe we have a storage-path, an url - but stuff is not synced correctly
+          if (Zotero.MIME.getMIMETypeFromFile(pdfpath) !== "application/pdf"
+            && selectedAtt?.getField('url')) {
+            await Zotero.Attachments.downloadFile(selectedAtt.getField('url'), pdfpath)
+          }
           ztoolkit.log(`pdf found: ${pdfpath}`);
           const response = await fetch("http://localhost:3246", {
             method: "POST",
@@ -190,10 +211,15 @@ export class CollectionUpdateFactory {
               note.setNote(data.summary);
               note.addTag("LLM:Summary");
               note.libraryID = item.libraryID;
-              await note.saveTx();
+              note.saveTx();
               item.removeTag("LLM:Summary-requested");
               await item.saveTx();
               ztoolkit.log("SUMMARY ADDED");
+            } else if (data.error) {
+              item.removeTag("LLM:Summary-requested");
+              selectedAtt?.addTag("LLM:PDF-conversion-error")
+              selectedAtt?.saveTx()
+              item.saveTx();
             } else {
               item.addTag("LLM:Summary-requested");
               await item.saveTx();
@@ -280,48 +306,48 @@ export class BasicExampleFactory {
   }
 }
 
-export class KeyExampleFactory {
-  @example
-  static registerShortcuts() {
-    // Register an event key for Alt+L
-    ztoolkit.Keyboard.register((ev, keyOptions) => {
-      ztoolkit.log(ev, keyOptions.keyboard);
-      if (keyOptions.keyboard?.equals("shift,l")) {
-        addon.hooks.onShortcuts("larger");
-      }
-      if (ev.shiftKey && ev.key === "S") {
-        addon.hooks.onShortcuts("smaller");
-      }
-    });
-
-    new ztoolkit.ProgressWindow(config.addonName)
-      .createLine({
-        text: "Example Shortcuts: Alt+L/S/C",
-        type: "success",
-      })
-      .show();
-  }
-
-  @example
-  static exampleShortcutLargerCallback() {
-    new ztoolkit.ProgressWindow(config.addonName)
-      .createLine({
-        text: "Larger!",
-        type: "default",
-      })
-      .show();
-  }
-
-  @example
-  static exampleShortcutSmallerCallback() {
-    new ztoolkit.ProgressWindow(config.addonName)
-      .createLine({
-        text: "Smaller!",
-        type: "default",
-      })
-      .show();
-  }
-}
+// export class KeyExampleFactory {
+//   @example
+//   static registerShortcuts() {
+//     // Register an event key for Alt+L
+//     ztoolkit.Keyboard.register((ev, keyOptions) => {
+//       ztoolkit.log(ev, keyOptions.keyboard);
+//       if (keyOptions.keyboard?.equals("shift,l")) {
+//         addon.hooks.onShortcuts("larger");
+//       }
+//       if (ev.shiftKey && ev.key === "S") {
+//         addon.hooks.onShortcuts("smaller");
+//       }
+//     });
+//
+//     new ztoolkit.ProgressWindow(config.addonName)
+//       .createLine({
+//         text: "Example Shortcuts: Alt+L/S/C",
+//         type: "success",
+//       })
+//       .show();
+//   }
+//
+//   @example
+//   static exampleShortcutLargerCallback() {
+//     new ztoolkit.ProgressWindow(config.addonName)
+//       .createLine({
+//         text: "Larger!",
+//         type: "default",
+//       })
+//       .show();
+//   }
+//
+//   @example
+//   static exampleShortcutSmallerCallback() {
+//     new ztoolkit.ProgressWindow(config.addonName)
+//       .createLine({
+//         text: "Smaller!",
+//         type: "default",
+//       })
+//       .show();
+//   }
+// }
 
 export class UIExampleFactory {
   @example
@@ -334,9 +360,6 @@ export class UIExampleFactory {
       },
     });
     document.documentElement.appendChild(styles);
-    document
-      .getElementById("zotero-item-pane-content")
-      ?.classList.add("makeItRed");
   }
 
   @example
@@ -347,17 +370,20 @@ export class UIExampleFactory {
       tag: "menuitem",
       id: "zotero-collectionmenu-readai-check",
       label: getString("menuitem-label"),
-      commandListener: (ev) => addon.hooks.onUpdate(),
+      commandListener: () => addon.hooks.onUpdate(),
       icon: menuIcon,
     });
   }
 
   @example
   static registerWindowMenu() {
+    const menuIcon = `chrome://${config.addonRef}/content/icons/favicon@0.5x.png`;
     ztoolkit.Menu.register("menuTools", {
       tag: "menuitem",
+      id: "zotero-toolmenu-readai-check",
       label: getString("menuitem-toolmenulabel"),
-      oncommand: "alert('Hello World! Tool Menuitem.')",
+      commandListener: () => addon.hooks.onUpdate(),
+      icon: menuIcon,
     });
   }
 
