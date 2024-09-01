@@ -9,7 +9,7 @@
 
 var chromeHandle;
 
-function install(data, reason) {}
+function install(data, reason) { }
 
 async function startup({ id, version, resourceURI, rootURI }, reason) {
   await Zotero.initializationPromise;
@@ -26,6 +26,7 @@ async function startup({ id, version, resourceURI, rootURI }, reason) {
   chromeHandle = aomStartup.registerChrome(manifestURI, [
     ["content", "__addonRef__", rootURI + "chrome/content/"],
   ]);
+  Zotero.log(rootURI + "chrome/content/")
 
   /**
    * Global variables for plugin code.
@@ -77,4 +78,4 @@ function shutdown({ id, version, resourceURI, rootURI }, reason) {
   }
 }
 
-function uninstall(data, reason) {}
+function uninstall(data, reason) { }

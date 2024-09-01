@@ -32,7 +32,7 @@ async function onStartup() {
   Zotero.PreferencePanes.register({
     pluginID: 'readai@hu-berlin.de',
     src: 'chrome/content/preferences.xhtml',
-    image: 'chrome/content/icons/favicon.png',
+    image: 'chrome/content/icons/favicon.svg',
   })
 
   await onMainWindowLoad(window);

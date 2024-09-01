@@ -1,0 +1,5 @@
+.zotero-menuitem-readai {
+  list-style-image: url("icons/favicon.svg");
+  -moz-context-properties: fill fill-opacity;
+  fill: currentcolor;
+}

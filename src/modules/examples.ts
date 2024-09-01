@@ -52,7 +52,6 @@ export class CollectionUpdateFactory {
     let itemNumber = 0;
     for (const itemID of itemIDs) {
       itemNumber += 1;
-      ztoolkit.log(itemID);
       const p = Math.floor((itemNumber * 100) / itemIDs.length);
       popupWin.changeLine({
         progress: p,
@@ -81,21 +80,23 @@ export class CollectionUpdateFactory {
       };
 
       const hasAtt = await hasPDFAttachment(item)
-      Zotero.log("Has Att? " + hasAtt)
       if (!hasAtt && item.getField('url') !== "") {
 
         // @ts-ignore created in newer api
-        const foo = Zotero.Attachments.getFileResolvers(item)
-        Zotero.log(JSON.stringify(foo))
-        // @ts-ignore created in newer api
-        await Zotero.Attachments.addFileFromURLs(item, Zotero.Attachments.getFileResolvers(item, ['doi', 'url', 'oa', 'custom']), { shouldDisplayCaptcha: true, enforceFileType: true })
-        Zotero.log("should™ have added.. ")
+        const dlSuccess = await Zotero.Attachments.addFileFromURLs(item, Zotero.Attachments.getFileResolvers(item, ['doi', 'url', 'oa', 'custom']), { shouldDisplayCaptcha: true, enforceFileType: true })
+        if (!dlSuccess) {
+          Zotero.warn(new Error("Could not add"))
+          handleDownloadError(item)
+        } else {
+          Zotero.debug("should™ have added.. ")
+        }
       }
 
       let selectedAtt = null;
       if (
         summaryNote === null &&
         !item.hasTag("LLM:no-summary") &&
+        !item.hasTag("LLM:ignore") &&
         !item.isAttachment() &&
         item.itemType !== "book"
       ) {
@@ -118,7 +119,8 @@ export class CollectionUpdateFactory {
 
               try {
                 const success = await Zotero.Attachments.downloadFirstAvailableFile(
-                  Zotero.Attachments.getPDFResolvers(att), // FIXME: getFileResolvers in future versions, zotero-types not up to date.
+                  // @ts-ignore created in newer api
+                  Zotero.Attachments.getFileResolvers(att), // FIXME: getFileResolvers in future versions, zotero-types not up to date.
                   tmpFile,
                   {
                     onBeforeRequest: () => {
@@ -156,18 +158,16 @@ export class CollectionUpdateFactory {
                   // Move file to final location
                   const destDir =
                     Zotero.Attachments.getStorageDirectory(att).path;
-                  await OS.File.move(tmpDirectory, destDir);
-                  ztoolkit.log(
-                    new Error(
-                      JSON.stringify([
-                        tmpDirectory,
-                        tmpFile,
-                        fileBaseName,
-                        filename,
-                        destDir,
-                        att,
-                      ]),
-                    ),
+                  await IOUtils.move(tmpDirectory, destDir);
+                  Zotero.debug(
+                    JSON.stringify([
+                      tmpDirectory,
+                      tmpFile,
+                      fileBaseName,
+                      filename,
+                      destDir,
+                      att,
+                    ]),
                   );
                   item.setField(
                     "url",
@@ -180,12 +180,12 @@ export class CollectionUpdateFactory {
                   handleDownloadError(att)
                 }
               } catch (e) {
-                ztoolkit.log(
+                Zotero.warn(
                   new Error(
                     `Could not download ${att.getField("url")}: ${e}`,
                   ),
                 );
-                ztoolkit.log(new Error(JSON.stringify(att)));
+                Zotero.debug(new Error(JSON.stringify(att)));
               }
             }
           }
@@ -197,7 +197,7 @@ export class CollectionUpdateFactory {
             && selectedAtt?.getField('url')) {
             await Zotero.Attachments.downloadFile(selectedAtt.getField('url'), pdfpath)
           }
-          ztoolkit.log(`pdf found: ${pdfpath}`);
+          Zotero.debug(`pdf found: ${pdfpath}`);
           const response = await fetch("http://localhost:3246", {
             method: "POST",
             body: JSON.stringify({ path: pdfpath }),
@@ -214,7 +214,7 @@ export class CollectionUpdateFactory {
               note.saveTx();
               item.removeTag("LLM:Summary-requested");
               await item.saveTx();
-              ztoolkit.log("SUMMARY ADDED");
+              Zotero.debug("SUMMARY ADDED");
             } else if (data.error) {
               item.removeTag("LLM:Summary-requested");
               selectedAtt?.addTag("LLM:PDF-conversion-error")
@@ -223,10 +223,10 @@ export class CollectionUpdateFactory {
             } else {
               item.addTag("LLM:Summary-requested");
               await item.saveTx();
-              ztoolkit.log(JSON.stringify(data));
+              Zotero.debug("summary requested: " + JSON.stringify(data));
             }
           } catch (e) {
-            ztoolkit.log(e);
+            Zotero.logError(new Error(`${e}`));
           }
         } else {
           item.removeTag("LLM:Summary-requested");
@@ -299,7 +299,7 @@ export class CollectionUpdateFactory {
 //       pluginID: config.addonID,
 //       src: rootURI + "chrome/content/preferences.xhtml",
 //       label: getString("prefs-title"),
-//       image: `chrome://${config.addonRef}/content/icons/favicon.png`,
+//       image: `chrome://${config.addonRef}/content/icons/favicon.svg`,
 //       defaultXUL: true,
 //     };
 //     ztoolkit.PreferencePane.register(prefOptions);
@@ -364,7 +364,7 @@ export class UIExampleFactory {
 
   @example
   static registerRightClickMenuItem() {
-    const menuIcon = `chrome://${config.addonRef}/content/icons/favicon.png`;
+    const menuIcon = `chrome://${config.addonRef}/content/icons/favicon.svg`;
     // item menuitem with icon
     ztoolkit.Menu.register("collection", {
       tag: "menuitem",
@@ -372,18 +372,20 @@ export class UIExampleFactory {
       label: getString("menuitem-label"),
       commandListener: () => addon.hooks.onUpdate(),
       icon: menuIcon,
+      class: "zotero-menuitem-readai",
     });
   }
 
   @example
   static registerWindowMenu() {
-    const menuIcon = `chrome://${config.addonRef}/content/icons/favicon.png`;
+    const menuIcon = `chrome://${config.addonRef}/content/icons/favicon.svg`;
     ztoolkit.Menu.register("menuTools", {
       tag: "menuitem",
       id: "zotero-toolmenu-readai-check",
       label: getString("menuitem-toolmenulabel"),
       commandListener: () => addon.hooks.onUpdate(),
       icon: menuIcon,
+      class: "zotero-menuitem-readai",
     });
   }
 
