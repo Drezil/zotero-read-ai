@@ -1,5 +1,4 @@
 import {
-  BasicExampleFactory,
   PromptExampleFactory,
   UIExampleFactory,
   CollectionUpdateFactory,
@@ -18,9 +17,9 @@ async function onStartup() {
 
   initLocale();
 
-  BasicExampleFactory.registerPrefs();
-
-  BasicExampleFactory.registerNotifier();
+  // BasicExampleFactory.registerPrefs();
+  //
+  // BasicExampleFactory.registerNotifier();
 
   // KeyExampleFactory.registerShortcuts();
 
@@ -28,7 +27,13 @@ async function onStartup() {
 
   UIExampleFactory.registerItemPaneSection();
 
-  UIExampleFactory.registerReaderItemPaneSection();
+  // UIExampleFactory.registerReaderItemPaneSection();
+
+  Zotero.PreferencePanes.register({
+    pluginID: 'readai@hu-berlin.de',
+    src: 'chrome/content/preferences.xhtml',
+    image: 'chrome/content/icons/favicon.png',
+  })
 
   await onMainWindowLoad(window);
 }
@@ -51,27 +56,22 @@ async function onMainWindowLoad(win: Window): Promise<void> {
     })
     .show();
 
-  await Zotero.Promise.delay(1000);
-  popupWin.changeLine({
-    progress: 30,
-    text: `[30%] ${getString("startup-begin")}`,
-  });
-
   UIExampleFactory.registerStyleSheet();
 
   UIExampleFactory.registerRightClickMenuItem();
 
   UIExampleFactory.registerWindowMenu();
 
-  await UIExampleFactory.registerCustomItemBoxRow();
+  popupWin.changeLine({
+    progress: 50,
+    text: `[50%] ${getString("startup-begin")}`,
+  });
 
   PromptExampleFactory.registerNormalCommandExample();
 
   PromptExampleFactory.registerAnonymousCommandExample();
 
   PromptExampleFactory.registerConditionalCommandExample();
-
-  await Zotero.Promise.delay(1000);
 
   popupWin.changeLine({
     progress: 100,
@@ -95,28 +95,28 @@ function onShutdown(): void {
   delete Zotero[config.addonInstance];
 }
 
-/**
- * This function is just an example of dispatcher for Notify events.
- * Any operations should be placed in a function to keep this funcion clear.
- */
-async function onNotify(
-  event: string,
-  type: string,
-  ids: Array<string | number>,
-  extraData: { [key: string]: any },
-) {
-  // You can add your code to the corresponding notify type
-  ztoolkit.log("notify", event, type, ids, extraData);
-  if (
-    event == "select" &&
-    type == "tab" &&
-    extraData[ids[0]].type == "reader"
-  ) {
-    BasicExampleFactory.exampleNotifierCallback();
-  } else {
-    return;
-  }
-}
+// /**
+//  * This function is just an example of dispatcher for Notify events.
+//  * Any operations should be placed in a function to keep this funcion clear.
+//  */
+// async function onNotify(
+//   event: string,
+//   type: string,
+//   ids: Array<string | number>,
+//   extraData: { [key: string]: any },
+// ) {
+//   // You can add your code to the corresponding notify type
+//   ztoolkit.log("notify", event, type, ids, extraData);
+//   if (
+//     event == "select" &&
+//     type == "tab" &&
+//     extraData[ids[0]].type == "reader"
+//   ) {
+//     BasicExampleFactory.exampleNotifierCallback();
+//   } else {
+//     return;
+//   }
+// }
 
 /**
  * This function is just an example of dispatcher for Preference UI events.
@@ -192,7 +192,7 @@ export default {
   onShutdown,
   onMainWindowLoad,
   onMainWindowUnload,
-  onNotify,
+  // onNotify,
   onPrefsEvent,
   // onShortcuts,
   // onDialogEvents,

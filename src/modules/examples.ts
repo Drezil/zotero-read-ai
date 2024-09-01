@@ -242,69 +242,69 @@ export class CollectionUpdateFactory {
   }
 }
 
-export class BasicExampleFactory {
-  @example
-  static registerNotifier() {
-    const callback = {
-      notify: async (
-        event: string,
-        type: string,
-        ids: number[] | string[],
-        extraData: { [key: string]: any },
-      ) => {
-        if (!addon?.data.alive) {
-          this.unregisterNotifier(notifierID);
-          return;
-        }
-        addon.hooks.onNotify(event, type, ids, extraData);
-      },
-    };
-
-    // Register the callback in Zotero as an item observer
-    const notifierID = Zotero.Notifier.registerObserver(callback, [
-      "tab",
-      "item",
-      "file",
-    ]);
-
-    // Unregister callback when the window closes (important to avoid a memory leak)
-    window.addEventListener(
-      "unload",
-      (e: Event) => {
-        this.unregisterNotifier(notifierID);
-      },
-      false,
-    );
-  }
-
-  @example
-  static exampleNotifierCallback() {
-    new ztoolkit.ProgressWindow(config.addonName)
-      .createLine({
-        text: "Open Tab Detected!",
-        type: "success",
-        progress: 100,
-      })
-      .show();
-  }
-
-  @example
-  private static unregisterNotifier(notifierID: string) {
-    Zotero.Notifier.unregisterObserver(notifierID);
-  }
-
-  @example
-  static registerPrefs() {
-    const prefOptions = {
-      pluginID: config.addonID,
-      src: rootURI + "chrome/content/preferences.xhtml",
-      label: getString("prefs-title"),
-      image: `chrome://${config.addonRef}/content/icons/favicon.png`,
-      defaultXUL: true,
-    };
-    ztoolkit.PreferencePane.register(prefOptions);
-  }
-}
+// export class BasicExampleFactory {
+//   @example
+//   static registerNotifier() {
+//     const callback = {
+//       notify: async (
+//         event: string,
+//         type: string,
+//         ids: number[] | string[],
+//         extraData: { [key: string]: any },
+//       ) => {
+//         if (!addon?.data.alive) {
+//           this.unregisterNotifier(notifierID);
+//           return;
+//         }
+//         addon.hooks.onNotify(event, type, ids, extraData);
+//       },
+//     };
+//
+//     // Register the callback in Zotero as an item observer
+//     const notifierID = Zotero.Notifier.registerObserver(callback, [
+//       "tab",
+//       "item",
+//       "file",
+//     ]);
+//
+//     // Unregister callback when the window closes (important to avoid a memory leak)
+//     window.addEventListener(
+//       "unload",
+//       (e: Event) => {
+//         this.unregisterNotifier(notifierID);
+//       },
+//       false,
+//     );
+//   }
+//
+//   @example
+//   static exampleNotifierCallback() {
+//     new ztoolkit.ProgressWindow(config.addonName)
+//       .createLine({
+//         text: "Open Tab Detected!",
+//         type: "success",
+//         progress: 100,
+//       })
+//       .show();
+//   }
+//
+//   @example
+//   private static unregisterNotifier(notifierID: string) {
+//     Zotero.Notifier.unregisterObserver(notifierID);
+//   }
+//
+//   @example
+//   static registerPrefs() {
+//     const prefOptions = {
+//       pluginID: config.addonID,
+//       src: rootURI + "chrome/content/preferences.xhtml",
+//       label: getString("prefs-title"),
+//       image: `chrome://${config.addonRef}/content/icons/favicon.png`,
+//       defaultXUL: true,
+//     };
+//     ztoolkit.PreferencePane.register(prefOptions);
+//   }
+// }
 
 // export class KeyExampleFactory {
 //   @example
@@ -356,7 +356,7 @@ export class UIExampleFactory {
       properties: {
         type: "text/css",
         rel: "stylesheet",
-        href: `chrome://${config.addonRef}/content/zoteroPane.css`,
+        href: `chrome://${config.addonRef}/content/readai.css`,
       },
     });
     document.documentElement.appendChild(styles);
@@ -364,7 +364,7 @@ export class UIExampleFactory {
 
   @example
   static registerRightClickMenuItem() {
-    const menuIcon = `chrome://${config.addonRef}/content/icons/favicon@0.5x.png`;
+    const menuIcon = `chrome://${config.addonRef}/content/icons/favicon.png`;
     // item menuitem with icon
     ztoolkit.Menu.register("collection", {
       tag: "menuitem",
@@ -377,7 +377,7 @@ export class UIExampleFactory {
 
   @example
   static registerWindowMenu() {
-    const menuIcon = `chrome://${config.addonRef}/content/icons/favicon@0.5x.png`;
+    const menuIcon = `chrome://${config.addonRef}/content/icons/favicon.png`;
     ztoolkit.Menu.register("menuTools", {
       tag: "menuitem",
       id: "zotero-toolmenu-readai-check",
@@ -412,46 +412,6 @@ export class UIExampleFactory {
   }
 
   @example
-  static async registerCustomItemBoxRow() {
-    await ztoolkit.ItemBox.register(
-      "itemBoxFieldEditable",
-      "Editable Custom Field",
-      (field, unformatted, includeBaseMapped, item, original) => {
-        return (
-          ztoolkit.ExtraField.getExtraField(item, "itemBoxFieldEditable") || ""
-        );
-      },
-      {
-        editable: true,
-        setFieldHook: (field, value, loadIn, item, original) => {
-          window.alert("Custom itemBox value is changed and saved to extra!");
-          ztoolkit.ExtraField.setExtraField(
-            item,
-            "itemBoxFieldEditable",
-            value,
-          );
-          return true;
-        },
-        index: 1,
-      },
-    );
-
-    await ztoolkit.ItemBox.register(
-      "itemBoxFieldNonEditable",
-      "Non-Editable Custom Field",
-      (field, unformatted, includeBaseMapped, item, original) => {
-        return (
-          "[CANNOT EDIT THIS]" + (item.getField("title") as string).slice(0, 10)
-        );
-      },
-      {
-        editable: false,
-        index: 2,
-      },
-    );
-  }
-
-  @example
   static registerItemPaneSection() {
     Zotero.ItemPaneManager.registerSection({
       paneID: "example",
@@ -474,90 +434,90 @@ export class UIExampleFactory {
     });
   }
 
-  @example
-  static async registerReaderItemPaneSection() {
-    Zotero.ItemPaneManager.registerSection({
-      paneID: "reader-example",
-      pluginID: config.addonID,
-      header: {
-        l10nID: getLocaleID("item-section-example2-head-text"),
-        // Optional
-        l10nArgs: `{"status": "Initialized"}`,
-        // Can also have a optional dark icon
-        icon: "chrome://zotero/skin/16/universal/book.svg",
-      },
-      sidenav: {
-        l10nID: getLocaleID("item-section-example2-sidenav-tooltip"),
-        icon: "chrome://zotero/skin/20/universal/save.svg",
-      },
-      // Optional
-      bodyXHTML: '<html:h1 id="test">THIS IS TEST</html:h1>',
-      // Optional, Called when the section is first created, must be synchronous
-      onInit: ({ item }) => {
-        ztoolkit.log("Section init!", item?.id);
-      },
-      // Optional, Called when the section is destroyed, must be synchronous
-      onDestroy: (props) => {
-        ztoolkit.log("Section destroy!");
-      },
-      // Optional, Called when the section data changes (setting item/mode/tabType/inTrash), must be synchronous. return false to cancel the change
-      onItemChange: ({ item, setEnabled, tabType }) => {
-        ztoolkit.log(`Section item data changed to ${item?.id}`);
-        setEnabled(tabType === "reader");
-        return true;
-      },
-      // Called when the section is asked to render, must be synchronous.
-      onRender: ({
-        body,
-        item,
-        setL10nArgs,
-        setSectionSummary,
-        setSectionButtonStatus,
-      }) => {
-        ztoolkit.log("Section rendered!", item?.id);
-        const title = body.querySelector("#test") as HTMLElement;
-        title.style.color = "red";
-        title.textContent = "LOADING";
-        setL10nArgs(`{ "status": "Loading" }`);
-        setSectionSummary("loading!");
-        setSectionButtonStatus("test", { hidden: true });
-      },
-      // Optional, can be asynchronous.
-      onAsyncRender: async ({
-        body,
-        item,
-        setL10nArgs,
-        setSectionSummary,
-        setSectionButtonStatus,
-      }) => {
-        ztoolkit.log("Section secondary render start!", item?.id);
-        await Zotero.Promise.delay(1000);
-        ztoolkit.log("Section secondary render finish!", item?.id);
-        const title = body.querySelector("#test") as HTMLElement;
-        title.style.color = "green";
-        title.textContent = item.getField("title");
-        setL10nArgs(`{ "status": "Loaded" }`);
-        setSectionSummary("rendered!");
-        setSectionButtonStatus("test", { hidden: false });
-      },
-      // Optional, Called when the section is toggled. Can happen anytime even if the section is not visible or not rendered
-      onToggle: ({ item }) => {
-        ztoolkit.log("Section toggled!", item?.id);
-      },
-      // Optional, Buttons to be shown in the section header
-      sectionButtons: [
-        {
-          type: "test",
-          icon: "chrome://zotero/skin/16/universal/empty-trash.svg",
-          l10nID: getLocaleID("item-section-example2-button-tooltip"),
-          onClick: ({ item, paneID }) => {
-            ztoolkit.log("Section clicked!", item?.id);
-            Zotero.ItemPaneManager.unregisterSection(paneID);
-          },
-        },
-      ],
-    });
-  }
+  // @example
+  // static async registerReaderItemPaneSection() {
+  //   Zotero.ItemPaneManager.registerSection({
+  //     paneID: "reader-example",
+  //     pluginID: config.addonID,
+  //     header: {
+  //       l10nID: getLocaleID("item-section-example2-head-text"),
+  //       // Optional
+  //       l10nArgs: `{"status": "Initialized"}`,
+  //       // Can also have a optional dark icon
+  //       icon: "chrome://zotero/skin/16/universal/book.svg",
+  //     },
+  //     sidenav: {
+  //       l10nID: getLocaleID("item-section-example2-sidenav-tooltip"),
+  //       icon: "chrome://zotero/skin/20/universal/save.svg",
+  //     },
+  //     // Optional
+  //     bodyXHTML: '<html:h1 id="test">THIS IS TEST</html:h1>',
+  //     // Optional, Called when the section is first created, must be synchronous
+  //     onInit: ({ item }) => {
+  //       ztoolkit.log("Section init!", item?.id);
+  //     },
+  //     // Optional, Called when the section is destroyed, must be synchronous
+  //     onDestroy: (props) => {
+  //       ztoolkit.log("Section destroy!");
+  //     },
+  //     // Optional, Called when the section data changes (setting item/mode/tabType/inTrash), must be synchronous. return false to cancel the change
+  //     onItemChange: ({ item, setEnabled, tabType }) => {
+  //       ztoolkit.log(`Section item data changed to ${item?.id}`);
+  //       setEnabled(tabType === "reader");
+  //       return true;
+  //     },
+  //     // Called when the section is asked to render, must be synchronous.
+  //     onRender: ({
+  //       body,
+  //       item,
+  //       setL10nArgs,
+  //       setSectionSummary,
+  //       setSectionButtonStatus,
+  //     }) => {
+  //       ztoolkit.log("Section rendered!", item?.id);
+  //       const title = body.querySelector("#test") as HTMLElement;
+  //       title.style.color = "red";
+  //       title.textContent = "LOADING";
+  //       setL10nArgs(`{ "status": "Loading" }`);
+  //       setSectionSummary("loading!");
+  //       setSectionButtonStatus("test", { hidden: true });
+  //     },
+  //     // Optional, can be asynchronous.
+  //     onAsyncRender: async ({
+  //       body,
+  //       item,
+  //       setL10nArgs,
+  //       setSectionSummary,
+  //       setSectionButtonStatus,
+  //     }) => {
+  //       ztoolkit.log("Section secondary render start!", item?.id);
+  //       await Zotero.Promise.delay(1000);
+  //       ztoolkit.log("Section secondary render finish!", item?.id);
+  //       const title = body.querySelector("#test") as HTMLElement;
+  //       title.style.color = "green";
+  //       title.textContent = item.getField("title");
+  //       setL10nArgs(`{ "status": "Loaded" }`);
+  //       setSectionSummary("rendered!");
+  //       setSectionButtonStatus("test", { hidden: false });
+  //     },
+  //     // Optional, Called when the section is toggled. Can happen anytime even if the section is not visible or not rendered
+  //     onToggle: ({ item }) => {
+  //       ztoolkit.log("Section toggled!", item?.id);
+  //     },
+  //     // Optional, Buttons to be shown in the section header
+  //     sectionButtons: [
+  //       {
+  //         type: "test",
+  //         icon: "chrome://zotero/skin/16/universal/empty-trash.svg",
+  //         l10nID: getLocaleID("item-section-example2-button-tooltip"),
+  //         onClick: ({ item, paneID }) => {
+  //           ztoolkit.log("Section clicked!", item?.id);
+  //           Zotero.ItemPaneManager.unregisterSection(paneID);
+  //         },
+  //       },
+  //     ],
+  //   });
+  // }
 }
 
 export class PromptExampleFactory {
