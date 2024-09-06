@@ -1,6 +1,6 @@
 {
   "name": "zotero-read-ai",
-  "version": "0.0.1-pre.4",
+  "version": "0.1.0",
   "description": "Zotero ReadAi",
   "config": {
     "addonName": "Zotero Read Ai",
