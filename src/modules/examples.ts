@@ -198,11 +198,16 @@ export class CollectionUpdateFactory {
             await Zotero.Attachments.downloadFile(selectedAtt.getField('url'), pdfpath)
           }
           Zotero.debug(`pdf found: ${pdfpath}`);
-          const response = await fetch("http://localhost:3246", {
-            method: "POST",
-            body: JSON.stringify({ path: pdfpath }),
-          });
+          const host: string = (Zotero.Prefs.get("readai.host") || "http://localhost:3246").toString()
           try {
+            const response = await fetch(host, {
+              method: "POST",
+              body: JSON.stringify({ path: pdfpath }),
+            });
+            if (!response.ok) {
+              Zotero.warn(new Error(`cannot communicate with ReadAi-Server: ${response.statusText}; tried ${response.url}`));
+              continue;
+            }
             const data: ServerAnswer =
               (await response.json()) as unknown as ServerAnswer;
             if (data.summary) {
