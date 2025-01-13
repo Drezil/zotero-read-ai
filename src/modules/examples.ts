@@ -161,7 +161,8 @@ export class CollectionUpdateFactory {
                   const fileBaseName =
                     Zotero.Attachments.getFileBaseNameFromItem(
                       item,
-                      att.getDisplayTitle(),
+                      //@ts-ignore api changed -.-
+                      { attachmentTitle: att.getDisplayTitle() },
                     );
                   let filename = await Zotero.File.rename(
                     tmpFile,
