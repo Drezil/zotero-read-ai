@@ -26,6 +26,9 @@ interface ServerAnswer {
 }
 
 async function hasPDFAttachment(item: Zotero.Item) {
+  if (item.isAttachment()) {
+    return false;
+  } // Attachments cannot HAVE attachments.
   let hasAtt = false;
   for (const attID of item.getAttachments()) {
     const att = await Zotero.Items.getAsync(attID);
@@ -34,7 +37,7 @@ async function hasPDFAttachment(item: Zotero.Item) {
       break;
     }
   }
-  return hasAtt
+  return hasAtt;
 }
 
 export class CollectionUpdateFactory {
@@ -79,16 +82,25 @@ export class CollectionUpdateFactory {
         return true;
       };
 
-      const hasAtt = await hasPDFAttachment(item)
-      if (!hasAtt && item.getField('url') !== "") {
-
-        // @ts-ignore created in newer api
-        const dlSuccess = await Zotero.Attachments.addFileFromURLs(item, Zotero.Attachments.getFileResolvers(item, ['doi', 'url', 'oa', 'custom']), { shouldDisplayCaptcha: true, enforceFileType: true })
+      const hasAtt = await hasPDFAttachment(item);
+      if (!hasAtt && item.getField("url") !== "") {
+        //@ts-ignore signature not yet in zotero-types
+        const dlSuccess = await Zotero.Attachments.addFileFromURLs(
+          item,
+          //@ts-ignore signature not yet in zotero-types
+          Zotero.Attachments.getFileResolvers(item, [
+            "doi",
+            "url",
+            "oa",
+            "custom",
+          ]),
+          { shouldDisplayCaptcha: true, enforceFileType: true },
+        );
         if (!dlSuccess) {
-          Zotero.warn(new Error("Could not add"))
-          handleDownloadError(item)
+          Zotero.warn(new Error("Could not add"));
+          handleDownloadError(item);
         } else {
-          Zotero.debug("should™ have added.. ")
+          Zotero.debug("should™ have added.. ");
         }
       }
 
@@ -104,9 +116,11 @@ export class CollectionUpdateFactory {
         let pdfpath: string | null = null;
         for (const attID of attIDs) {
           const att = await Zotero.Items.getAsync(attID);
-          if (att.attachmentContentType === "application/pdf"
-            && !att.hasTag("LLM:no-summary")
-            && !att.hasTag("LLM:ignore")) {
+          if (
+            att.attachmentContentType === "application/pdf" &&
+            !att.hasTag("LLM:no-summary") &&
+            !att.hasTag("LLM:ignore")
+          ) {
             const thepath = await att.getFilePathAsync();
             if (thepath) {
               pdfpath = thepath;
@@ -118,23 +132,26 @@ export class CollectionUpdateFactory {
               const tmpFile = PathUtils.join(`${tmpDirectory}`, "file.tmp");
 
               try {
-                const success = await Zotero.Attachments.downloadFirstAvailableFile(
-                  // @ts-ignore created in newer api
-                  Zotero.Attachments.getFileResolvers(att), // FIXME: getFileResolvers in future versions, zotero-types not up to date.
-                  tmpFile,
-                  {
-                    onBeforeRequest: () => {
-                      return;
+                const success =
+                  await Zotero.Attachments.downloadFirstAvailableFile(
+                    // @ts-ignore created in newer api
+                    Zotero.Attachments.getFileResolvers(att), // FIXME: getFileResolvers in future versions, zotero-types not up to date.
+                    tmpFile,
+                    {
+                      onBeforeRequest: () => {
+                        return;
+                      },
+                      onAfterRequest: () => {
+                        return;
+                      },
+                      onRequestError: () => {
+                        return true;
+                      },
                     },
-                    onAfterRequest: () => {
-                      return;
-                    },
-                    onRequestError: () => { return true },
-                  },
-                );
-                let mime = ""
+                  );
+                let mime = "";
                 if (success) {
-                  mime = Zotero.MIME.getMIMETypeFromFile(tmpFile)
+                  mime = await Zotero.MIME.getMIMETypeFromFile(tmpFile);
                 }
                 if (mime === "application/pdf") {
                   // if download succeded remove error-tag
@@ -150,7 +167,7 @@ export class CollectionUpdateFactory {
                     tmpFile,
                     `${att.key}_${fileBaseName}.pdf`,
                   );
-                  filename = filename || `${att.key}_${fileBaseName}.pdf`
+                  filename = filename || `${att.key}_${fileBaseName}.pdf`;
                   att.attachmentLinkMode =
                     Zotero.Attachments.LINK_MODE_IMPORTED_URL;
                   att.attachmentPath = `storage:${filename}`;
@@ -173,17 +190,14 @@ export class CollectionUpdateFactory {
                     "url",
                     item.getField("url") || att.getField("url"),
                   );
-                  pdfpath = PathUtils.join(destDir, filename)
+                  pdfpath = PathUtils.join(destDir, filename);
                   selectedAtt = att;
-                }
-                else {
-                  handleDownloadError(att)
+                } else {
+                  handleDownloadError(att);
                 }
               } catch (e) {
                 Zotero.warn(
-                  new Error(
-                    `Could not download ${att.getField("url")}: ${e}`,
-                  ),
+                  new Error(`Could not download ${att.getField("url")}: ${e}`),
                 );
                 Zotero.debug(new Error(JSON.stringify(att)));
               }
@@ -192,20 +206,32 @@ export class CollectionUpdateFactory {
         }
 
         if (pdfpath !== null) {
+          const tmp_mime = await Zotero.MIME.getMIMETypeFromFile(pdfpath);
           // maybe we have a storage-path, an url - but stuff is not synced correctly
-          if (Zotero.MIME.getMIMETypeFromFile(pdfpath) !== "application/pdf"
-            && selectedAtt?.getField('url')) {
-            await Zotero.Attachments.downloadFile(selectedAtt.getField('url'), pdfpath)
+          if (
+            tmp_mime !== "application/pdf" &&
+            selectedAtt?.getField("url")
+          ) {
+            await Zotero.Attachments.downloadFile(
+              selectedAtt.getField("url"),
+              pdfpath,
+            );
           }
           Zotero.debug(`pdf found: ${pdfpath}`);
-          const host: string = (Zotero.Prefs.get("readai.host") || "http://localhost:3246").toString()
+          const host: string = (
+            Zotero.Prefs.get("readai.host") || "http://localhost:3246"
+          ).toString();
           try {
             const response = await fetch(host, {
               method: "POST",
               body: JSON.stringify({ path: pdfpath }),
             });
             if (!response.ok) {
-              Zotero.warn(new Error(`cannot communicate with ReadAi-Server: ${response.statusText}; tried ${response.url}`));
+              Zotero.warn(
+                new Error(
+                  `cannot communicate with ReadAi-Server: ${response.statusText}; tried ${response.url}`,
+                ),
+              );
               continue;
             }
             const data: ServerAnswer =
@@ -222,8 +248,8 @@ export class CollectionUpdateFactory {
               Zotero.debug("SUMMARY ADDED");
             } else if (data.error) {
               item.removeTag("LLM:Summary-requested");
-              selectedAtt?.addTag("LLM:PDF-conversion-error")
-              selectedAtt?.saveTx()
+              selectedAtt?.addTag("LLM:PDF-conversion-error");
+              selectedAtt?.saveTx();
               item.saveTx();
             } else {
               item.addTag("LLM:Summary-requested");
@@ -397,7 +423,7 @@ export class UIExampleFactory {
   @example
   static async registerExtraColumnWithCustomCell() {
     const field = "test2";
-    await Zotero.ItemTreeManager.registerColumns({
+    Zotero.ItemTreeManager.registerColumn({
       pluginID: config.addonID,
       dataKey: field,
       label: "custom column",
@@ -557,7 +583,7 @@ export class PromptExampleFactory {
               author = authorDate = item.firstCreator;
             }
             let date = item.getField("date", true, true) as string;
-            if (date && (date = date.substr(0, 4)) !== "0000") {
+            if (date && (date = date.substring(0, 4)) !== "0000") {
               authorDate += " (" + parseInt(date) + ")";
             }
             authorDate = authorDate.trim();
@@ -656,12 +682,12 @@ export class PromptExampleFactory {
                 hasValidCondition = true;
                 s.addCondition(
                   "joinMode",
-                  joinMode as Zotero.Search.Operator,
+                  joinMode as _ZoteroTypes.Search.Operator,
                   "",
                 );
                 s.addCondition(
                   conditions[0] as string,
-                  conditions[1] as Zotero.Search.Operator,
+                  conditions[1] as _ZoteroTypes.Search.Operator,
                   conditions[2] as string,
                 );
               }

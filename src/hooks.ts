@@ -30,10 +30,10 @@ async function onStartup() {
   // UIExampleFactory.registerReaderItemPaneSection();
 
   Zotero.PreferencePanes.register({
-    pluginID: 'readai@hu-berlin.de',
-    src: 'chrome/content/preferences.xhtml',
-    image: 'chrome/content/icons/favicon.svg',
-  })
+    pluginID: "readai@hu-berlin.de",
+    src: "chrome/content/preferences.xhtml",
+    image: "chrome/content/icons/favicon.svg",
+  });
 
   await onMainWindowLoad(window);
 }
@@ -92,6 +92,7 @@ function onShutdown(): void {
   addon.data.dialog?.window?.close();
   // Remove addon object
   addon.data.alive = false;
+  // @ts-ignore - Plugin instance is not typed
   delete Zotero[config.addonInstance];
 }
 
